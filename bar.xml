@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<testdefinition version="0.1">
+  <suite name="suite1" domain="example-domain"> 
+    <set name="set1" description="set1" feature="set1">
+      <case name="case1" description="case1" timeout="5">
+        <step expected_result="0" >echo yo! > /home/rasjani/test/log/file</step>
+        <event type="send" resource="foo">
+          <param type="string" name="foo">foo</param>
+        </event>
+      </case>
+      <get>
+        <file delete_after="false">~/unittestlogs_m2.tar.gz</file>
+        <file delete_after="false">/home/rasjani/test/log/file</file>
+      </get>
+    </set>
+
+  </suite>
+</testdefinition>
+

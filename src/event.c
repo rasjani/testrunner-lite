@@ -23,7 +23,8 @@
 
 /* ------------------------------------------------------------------------- */
 /* INCLUDE FILES */
-#include <libcqpid/cqpid.h>
+#include <proton/message.h>
+#include <proton/messenger.h>
 #include <json.h>
 #include <libxml/list.h>
 #include <string.h>
@@ -51,7 +52,7 @@
 
 /* ------------------------------------------------------------------------- */
 /* CONSTANTS */
-/* None */
+const char *address = "amqp://~0.0.0.0";
 
 /* ------------------------------------------------------------------------- */
 /* MACROS */
@@ -59,8 +60,7 @@
 
 /* ------------------------------------------------------------------------- */
 /* LOCAL GLOBAL VARIABLES */
-static Connection *connection = NULL;
-static Session *session = NULL;
+static pn_messenger_t  *messenger = NULL;
 
 /* ------------------------------------------------------------------------- */
 /* LOCAL CONSTANTS AND MACROS */
@@ -84,7 +84,7 @@ static Session *session = NULL;
 static int types_match(json_object *obj, xmlChar *type);
 static int add_to_json_object(const void *data, const void *user);
 static void get_event_params(td_event *event, json_object *object);
-static Session *broker_session();
+static pn_messenger_t *broker_session();
 /* ------------------------------------------------------------------------- */
 /* ======================== FUNCTIONS ====================================== */
 /* ------------------------------------------------------------------------- */
@@ -99,39 +99,39 @@ static Session *broker_session();
  */
 static int types_match(json_object *obj, xmlChar *type)
 {
-	/* json_object_get_type() cannot be called for a null object  */
-	if (!obj) {
-		return xmlStrEqual(type, BAD_CAST "null");
-	}
+  /* json_object_get_type() cannot be called for a null object  */
+  if (!obj) {
+    return xmlStrEqual(type, BAD_CAST "null");
+  }
 
-	switch(json_object_get_type(obj)) {
-	case json_type_boolean:
-		if (!xmlStrEqual(type, BAD_CAST "boolean"))
-			return 0;
-		break;
-	case json_type_double:
-	case json_type_int:
-		if (!xmlStrEqual(type, BAD_CAST "number"))
-			return 0;
-		break;
-	case json_type_object:
-		if (!xmlStrEqual(type, BAD_CAST "object"))
-			return 0;
-		break;
-	case json_type_array:
-		if (!xmlStrEqual(type, BAD_CAST "array"))
-			return 0;
-		break;
-	case json_type_string:
-		if (!xmlStrEqual(type, BAD_CAST "string"))
-			return 0;
-		break;
-	default:
-		return 0;
-		break;
-	}
+  switch(json_object_get_type(obj)) {
+  case json_type_boolean:
+    if (!xmlStrEqual(type, BAD_CAST "boolean"))
+      return 0;
+    break;
+  case json_type_double:
+  case json_type_int:
+    if (!xmlStrEqual(type, BAD_CAST "number"))
+      return 0;
+    break;
+  case json_type_object:
+    if (!xmlStrEqual(type, BAD_CAST "object"))
+      return 0;
+    break;
+  case json_type_array:
+    if (!xmlStrEqual(type, BAD_CAST "array"))
+      return 0;
+    break;
+  case json_type_string:
+    if (!xmlStrEqual(type, BAD_CAST "string"))
+      return 0;
+    break;
+  default:
+    return 0;
+    break;
+  }
 
-	return 1;
+  return 1;
 }
 
 /** 
@@ -144,41 +144,41 @@ static int types_match(json_object *obj, xmlChar *type)
  */
 static int add_to_json_object(const void *data, const void *user)
 {
-	const td_event_param *param = (const td_event_param *) data;
-	json_object *obj = (json_object *) user;
-	json_object *new_obj = NULL;
+  const td_event_param *param = (const td_event_param *) data;
+  json_object *obj = (json_object *) user;
+  json_object *new_obj = NULL;
 
-	if (param->type == NULL || param->name == NULL || 
-	    param->value == NULL) {
-		return 1;
-	}
+  if (param->type == NULL || param->name == NULL || 
+      param->value == NULL) {
+    return 1;
+  }
 
-	if (xmlStrEqual(param->type, BAD_CAST "string")) {
-		/* We don't expect quotes for a string as json_tokener does */
-		new_obj = json_object_new_string((const char*)param->value);
-	} else {
-		new_obj = json_tokener_parse((const char*)param->value);
-	}
+  if (xmlStrEqual(param->type, BAD_CAST "string")) {
+    /* We don't expect quotes for a string as json_tokener does */
+    new_obj = json_object_new_string((const char*)param->value);
+  } else {
+    new_obj = json_tokener_parse((const char*)param->value);
+  }
 
-	if (is_error(new_obj)) {
-		/* error occured in parsing */
-		LOG_MSG (LOG_WARNING, "Cannot parse event param '%s'",
-			 (const char*)param->name);
-		return 1;
-	}
+  if (is_error(new_obj)) {
+    /* error occured in parsing */
+    LOG_MSG (LOG_WARNING, "Cannot parse event param '%s'",
+       (const char*)param->name);
+    return 1;
+  }
 
-	if (!types_match(new_obj, param->type)) {
-		/* actual type is other than specified in  param->type */
-		LOG_MSG (LOG_WARNING, "Type conflict for event param '%s'",
-			 (const char*)param->name);
-		/* free json object */
-		json_object_put(new_obj);
-		return 1;
-	}
+  if (!types_match(new_obj, param->type)) {
+    /* actual type is other than specified in  param->type */
+    LOG_MSG (LOG_WARNING, "Type conflict for event param '%s'",
+       (const char*)param->name);
+    /* free json object */
+    json_object_put(new_obj);
+    return 1;
+  }
 
-	json_object_object_add(obj, (const char*)param->name, new_obj);
+  json_object_object_add(obj, (const char*)param->name, new_obj);
 
-	return 1;
+  return 1;
 }
 
 /** 
@@ -189,93 +189,84 @@ static int add_to_json_object(const void *data, const void *user)
  */
 static void get_event_params(td_event *event, json_object *object)
 {
-	td_event_param *param = NULL;
-	char *key;
-	struct json_object *val;
-	struct lh_entry *entry;
+  td_event_param *param = NULL;
+  char *key;
+  struct json_object *val;
+  struct lh_entry *entry;
 
-	for(entry = json_object_get_object(object)->head;
-	    (entry ? (key = (char*)entry->k,
-		      val = (struct json_object*)entry->v, entry) : 0);
-	    entry = entry->next) {
-		param = td_event_param_create();
+  for(entry = json_object_get_object(object)->head;
+      (entry ? (key = (char*)entry->k,
+          val = (struct json_object*)entry->v, entry) : 0);
+      entry = entry->next) {
+    param = td_event_param_create();
 
-		if (!val) {
-			/* null object needs special processing */
-			param->type = xmlStrdup(BAD_CAST "null");
-			param->name = xmlStrdup(BAD_CAST key);
-			param->value = xmlStrdup(BAD_CAST "null");
-		} else {
-			switch (json_object_get_type(val)) {
-			case json_type_boolean:
-				param->type = xmlStrdup(BAD_CAST "boolean");
-				break;
-			case json_type_double:
-			case json_type_int:
-				param->type = xmlStrdup(BAD_CAST "number");
-				break;
-			case json_type_object:
-				param->type = xmlStrdup(BAD_CAST "object");
-				break;
-			case json_type_array:
-				param->type = xmlStrdup(BAD_CAST "array");
-				break;
-			case json_type_string:
-				param->type = xmlStrdup(BAD_CAST "string");
-				break;
-			default:
-				break;
-			}
+    if (!val) {
+      /* null object needs special processing */
+      param->type = xmlStrdup(BAD_CAST "null");
+      param->name = xmlStrdup(BAD_CAST key);
+      param->value = xmlStrdup(BAD_CAST "null");
+    } else {
+      switch (json_object_get_type(val)) {
+      case json_type_boolean:
+        param->type = xmlStrdup(BAD_CAST "boolean");
+        break;
+      case json_type_double:
+      case json_type_int:
+        param->type = xmlStrdup(BAD_CAST "number");
+        break;
+      case json_type_object:
+        param->type = xmlStrdup(BAD_CAST "object");
+        break;
+      case json_type_array:
+        param->type = xmlStrdup(BAD_CAST "array");
+        break;
+      case json_type_string:
+        param->type = xmlStrdup(BAD_CAST "string");
+        break;
+      default:
+        break;
+      }
 
-			param->name = xmlStrdup(BAD_CAST key);
-			param->value = xmlStrdup(BAD_CAST 
-						 json_object_get_string(val));
-		}
+      param->name = xmlStrdup(BAD_CAST key);
+      param->value = xmlStrdup(BAD_CAST 
+             json_object_get_string(val));
+    }
 
-		xmlListAppend (event->params, param);
-	}
+    xmlListAppend (event->params, param);
+  }
 }
 
 /** 
- * Creates connection and session to AMQP broker if not yet connected. Returns
- * pointer to a session handle.
- * 
- * @return Pointer to a session, 0 in failure
+ * @return Pointer to a messenger , 0 in failure
  */
-static Session *broker_session()
+static pn_messenger_t *broker_session()
 {
-	const char *url = "amqp:tcp:127.0.0.1:5672";
-	const char *options = "";
+  
+  while (!messenger) {
+    messenger = pn_messenger(NULL);
+    pn_messenger_start(messenger);
+    int errno = pn_messenger_errno(messenger);
+    if(errno) {
+      LOG_MSG (LOG_WARNING, "Creating AMQP connection failed");
+      LOG_MSG (LOG_WARNING, "%s", pn_code(errno));
+      break;
+    }
+    /*
+    pn_messenger_subscribe(messenger, address);
+    if(pn_messenger_errno(messenger)) {
+      LOG_MSG (LOG_WARNING, "Cannot connect to AMQP broker");
+      break;
+    }
+    */
 
-	while (!connection) {
-		connection = connection_new(url, options);
+    break;
+  }
 
-		if (!connection) {
-			LOG_MSG (LOG_WARNING, "Creating AMQP "
-				 "connection failed");
-			break;
-		}
+  if (!messenger) {
+    cleanup_event_system();
+  }
 
-		connection_open(connection);
-		if (connection_is_open(connection) > 0) {
-			LOG_MSG (LOG_INFO, "Opened connection to AMQP broker");
-		} else {
-			LOG_MSG (LOG_WARNING, "Cannot connect to AMQP broker");
-		}
-
-		session = connection_create_session(connection, "");
-		if (!session) {
-			LOG_MSG (LOG_WARNING, "Creating AMQP session failed");
-		}
-
-		break;
-	}
-
-	if (!connection || !session || connection_is_open(connection) <= 0) {
-		cleanup_event_system();
-	}
-
-	return session;
+  return messenger;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -290,8 +281,14 @@ static Session *broker_session()
  */
 int init_event_system()
 {
-	/* nothing to do */
-	return 1;
+  pn_messenger_t *msgr  = NULL;
+  int ret = 0;
+  msgr = broker_session();
+  if (!msgr) {
+    messenger = msgr;
+    ret = 1;
+  }
+  return ret;
 }
 
 /** 
@@ -300,21 +297,11 @@ int init_event_system()
  */
 void cleanup_event_system()
 {
-	if (session) {
-		session_close(session);
-		session_destroy(session);
-	}
-
-	if (connection) {
-		if (connection_is_open(connection) > 0) {
-			LOG_MSG (LOG_INFO, "Closing connection to AMQP broker");
-			connection_close(connection);
-		}
-		connection_destroy(connection);
-	}
-
-	connection = NULL;
-	session = NULL;
+  if (messenger) {
+    pn_messenger_stop(messenger);
+    pn_messenger_free(messenger);
+  }
+  messenger = NULL;
 }
 
 /** 
@@ -326,71 +313,72 @@ void cleanup_event_system()
  */
 int wait_for_event(td_event *event)
 {
-	char *buf = NULL;
-	Session *session = NULL;
-	Receiver *receiver = NULL;
-	Message *message = NULL;
-	size_t len = 0;
-	json_object *obj = NULL;
-	int ret = 1;
+  char *buf = NULL;
+  pn_messenger_t *session = NULL;
+// Receiver *receiver = NULL;
+// Message *message = NULL;
 
-	session = broker_session();
-	if (!session) {
-		ret = 0;
-		goto out;
-	}
+  size_t len = 0;
+  json_object *obj = NULL;
+  int ret = 0; /* 0 */
 
-	LOG_MSG (LOG_INFO, "Waiting for event: %s", event->resource);
+  /*
+  session = broker_session();
+  if (!session) {
+    ret = 0;
+    goto out;
+  }
 
-	receiver = session_create_receiver_str(session,
-					       (const char*)event->resource);
-	if (!receiver) {
-		ret = 0;
-		goto out;
-	}
+  LOG_MSG (LOG_INFO, "Waiting for event: %s", event->resource);
 
-	message = receiver_fetch(receiver, event->timeout * 1000UL);
-	if (!message) {
-		ret = 0;
-		goto out;
-	}
+  receiver = session_create_receiver_str(session,
+                 (const char*)event->resource);
+  if (!receiver) {
+    ret = 0;
+    goto out;
+  }
 
-	LOG_MSG (LOG_INFO, "Received event");
+  message = receiver_fetch(receiver, event->timeout * 1000UL);
+  if (!message) {
+    ret = 0;
+    goto out;
+  }
 
-	len = message_get_content_size(message);
+  LOG_MSG (LOG_INFO, "Received event");
 
-	if (len > 0) {
-		buf = (char *)malloc(len + 1);
-		memcpy(buf, message_get_content_ptr(message), len);
-		buf[len] = '\0';
+  len = message_get_content_size(message);
 
-		/* parse json content */
-		obj = json_tokener_parse(buf);
-		if (!is_error(obj)) {
-			if (json_object_get_type(obj) == json_type_object) {
-				get_event_params(event, obj);
-			}
-			json_object_put(obj);
-		} else {
-			LOG_MSG (LOG_WARNING, "Cannot parse received "
-				 "event content");
-		}
+  if (len > 0) {
+    buf = (char *)malloc(len + 1);
+    memcpy(buf, message_get_content_ptr(message), len);
+    buf[len] = '\0';
 
-		free(buf);
-	}
+    obj = json_tokener_parse(buf);
+    if (!is_error(obj)) {
+      if (json_object_get_type(obj) == json_type_object) {
+        get_event_params(event, obj);
+      }
+      json_object_put(obj);
+    } else {
+      LOG_MSG (LOG_WARNING, "Cannot parse received "
+         "event content");
+    }
 
-	session_acknowledge(session);
+    free(buf);
+  }
+
+  session_acknowledge(session);
 
  out:
-	if (message) {
-		message_destroy(message);
-	}
+  if (message) {
+    message_destroy(message);
+  }
 
-	if (receiver) {
-		receiver_destroy(receiver);
-	}
-
-	return ret;
+  if (receiver) {
+    receiver_destroy(receiver);
+  }
+  */
+  return ret;
 }
 
 /** 
@@ -402,56 +390,49 @@ int wait_for_event(td_event *event)
  */
 int send_event(td_event *event)
 {
-	Session *session = NULL;
-	Sender *sender = NULL;
-	Message *message = NULL;
-	json_object *obj = NULL;
-	const char* token = NULL;
-	int ret = 1;
+  pn_messenger_t *session = NULL;
+  pn_message_t *message = NULL;
+  pn_data_t *body = NULL;
+  json_object *obj = NULL;
+  char *addr= "amqp://0.0.0.0";
+  const char* token = NULL;
+  int ret = 1;
 
-	session = broker_session();
-	if (!session) {
-		ret = 0;
-		goto out;
-	}
+  session = broker_session();
+  if (!session) {
+    ret = 0;
+    goto out;
+  }
 
-	obj = json_object_new_object();
+  obj = json_object_new_object();
 
-	/* add event params to json object */
-	xmlListWalk(event->params, add_to_json_object, obj);
+  /* add event params to json object */
+  xmlListWalk(event->params, add_to_json_object, obj);
 
-	token = json_object_to_json_string(obj);
+  token = json_object_to_json_string(obj);
 
-	sender = session_create_sender_str(session,
-					   (const char*)event->resource);
-	if (!sender) {
-		ret = 0;
-		goto out;
-	}
+  message = pn_message();
+  if (!message) {
+    ret = 0;
+    goto out;
+  }
+  pn_message_set_address(message, addr);
+  body = pn_message_body(message);
+  pn_data_put_string(body, pn_bytes(strlen(token), token));
+  pn_messenger_put(messenger, message);
+  pn_messenger_send(messenger, message);
 
-	message = message_new();
-	if (!message) {
-		ret = 0;
-		goto out;
-	}
-
-	message_set_content(message, token, strlen(token));
-	sender_send(sender, message);
-
-	LOG_MSG (LOG_INFO, "Sending event: %s", event->resource);
+  LOG_MSG (LOG_INFO, "Sending event: %s", event->resource);
 
  out:
-	if (message) {
-		message_destroy(message);
-	}
-	if (sender) {
-		sender_destroy(sender);
-	}
-	if (obj) {
-		json_object_put(obj);
-	}
+  if (message) {
+    pn_message_free(message);
+  }
+  if (obj) {
+    json_object_put(obj);
+  }
 
-	return ret;
+  return ret;
 }
 
 /* ================= OTHER EXPORTED FUNCTIONS ============================== */
