@@ -35,7 +35,7 @@ AM_CONDITIONAL([ENABLE_EVENTS], [test "$events_feature" = "yes"])
 AM_COND_IF([ENABLE_EVENTS],
            [PKG_CHECK_MODULES([JSON], [json >= 0.9])])
 AM_COND_IF([ENABLE_EVENTS],
-           [PKG_CHECK_MODULES([CQPID], [libcqpid])])
+           [PKG_CHECK_MODULES([QPID], [qpid-proton])])
 AM_CONDITIONAL([ENABLE_LIBSSH2], [test "$libssh2_feature" = "yes"])
 AM_COND_IF([ENABLE_LIBSSH2],
            [PKG_CHECK_MODULES([LIBSSH2], [libssh2 >= 1.2.2])])
