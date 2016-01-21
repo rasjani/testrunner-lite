@@ -26,7 +26,7 @@ build-stamp:
 	dh_testdir
 	libtoolize --copy --force && aclocal  && autoheader && automake --add-missing --foreign && autoconf
 	touch build-stamp 
-	./configure --enable-libssh2 --prefix=/usr  $(confflags)
+	./configure --enable-libssh2 --enable-events --prefix=/usr  $(confflags)
 	$(MAKE) CFLAGS="$(CFLAGS)"  || exit 1 
 ifeq (yes, $(GENERATE_DOCS))
 	$(MAKE) html || exit 1 
