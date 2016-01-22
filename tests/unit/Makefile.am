@@ -48,7 +48,7 @@ testrunnerliteunittests_LDADD = $(top_builddir)/src/testdefinitionparser.o \
 if ENABLE_EVENTS
 testrunnerliteunittests_LDADD += $(top_builddir)/src/event.o \
                                  $(JSON_LIBS) \
-                                 $(CQPID_LIBS)
+                                 $(RABBITMQ_LIBS)
 endif
 
 if ENABLE_LIBSSH2

@@ -46,8 +46,8 @@ noinst_HEADERS = testrunnerlite.h \
 if ENABLE_EVENTS
 testrunner_lite_SOURCES += event.c
 noinst_HEADERS          += event.h
-testrunner_lite_LDADD   += $(JSON_LIBS) $(CQPID_LIBS)
-AM_CFLAGS               += $(JSON_CFLAGS) $(CQPID_FLAGS) -DENABLE_EVENTS
+testrunner_lite_LDADD   += $(JSON_LIBS) $(RABBITMQ_LIBS)
+AM_CFLAGS               += $(JSON_CFLAGS) $(RABBITMQ_FLAGS) -DENABLE_EVENTS
 endif
 
 if ENABLE_LIBSSH2
