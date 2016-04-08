@@ -65,6 +65,7 @@ typedef struct {
 typedef struct {
 	/* parser fills */
 	xmlChar *hw_detector;         /**< Command used to detect HW  */
+	xmlChar *amqphost;         /**< amqp host */
 	xmlChar *description;
 	xmlChar *version;
 	/* executor fills */

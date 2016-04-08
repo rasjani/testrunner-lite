@@ -207,6 +207,7 @@ void td_td_delete(td_td *td)
 {
 	if (td) {
 		xmlFree(td->hw_detector);
+		xmlFree(td->amqphost);
 		xmlFree(td->detected_hw);
 		xmlFree(td->version);
 		xmlFree(td->description);

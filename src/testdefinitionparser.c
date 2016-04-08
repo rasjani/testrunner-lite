@@ -108,6 +108,8 @@ LOCAL void log_xml_warning(void * ctx, const char * fmt, ...);
 /* ------------------------------------------------------------------------- */
 LOCAL int add_post_reboot_step(const void *, const void *);
 /* ------------------------------------------------------------------------- */
+LOCAL int td_parse_amqphost ();
+/* ------------------------------------------------------------------------- */
 #ifdef ENABLE_EVENTS
 LOCAL td_step *td_parse_event();
 /* ------------------------------------------------------------------------- */
@@ -948,6 +950,29 @@ LOCAL int td_parse_hwiddetect ()
 	return 0;
 }
 /* ------------------------------------------------------------------------- */
+/** Read amqp tag, store host url command, and use callback to run it
+ *  @return 0 on success
+ */
+LOCAL int td_parse_amqphost ()
+{
+	int ret;
+	const xmlChar *name;
+
+	do {
+		if (xmlTextReaderHasValue(reader) > 0) {
+			current_td->amqphost = xmlTextReaderValue(reader);
+			LOG_MSG (LOG_INFO, "amqp host: %s",
+				 current_td->amqphost);
+		}
+		ret = xmlTextReaderRead(reader);
+		name = xmlTextReaderConstName(reader);
+	}
+	while(xmlTextReaderNodeType(reader) != XML_READER_TYPE_END_ELEMENT &&
+	      xmlStrcmp (name, BAD_CAST "amqphost"));
+
+	return 0;
+}
+/* ------------------------------------------------------------------------- */
 /** Callback for parser/validator errors
  * @param ctx pointer to xmlSchemaParserCtxt
  * @param fmt format as in printf()
@@ -1190,6 +1215,12 @@ int td_next_node (void) {
 	if (!xmlStrcmp (name, BAD_CAST "hwiddetect")) {
 		if (type == XML_READER_TYPE_ELEMENT) {
 			return td_parse_hwiddetect();
+		}
+	}
+
+	if (!xmlStrcmp (name, BAD_CAST "amqphost")) {
+		if (type == XML_READER_TYPE_ELEMENT) {
+			return td_parse_amqphost();
 		}
 	}
 

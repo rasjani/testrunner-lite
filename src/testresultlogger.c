@@ -173,6 +173,13 @@ LOCAL int xml_write_td_end (td_td *td)
 					       td->hw_detector) < 0)
 			goto err_out;
 	
+	if (td->amqphost)
+		if (xmlTextWriterWriteElement (writer, 
+					       BAD_CAST "amqphost", 
+					       td->hw_detector) < 0)
+			goto err_out;
+
+
 	if (td->description)
 		if (xmlTextWriterWriteElement	(writer, 
 						 BAD_CAST "description", 
